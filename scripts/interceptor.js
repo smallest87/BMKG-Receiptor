@@ -1,5 +1,5 @@
 (function() {
-    console.log("%c[BMKG-Receiptor] Mode: URL-Based Logic Active", "color: lime; font-weight: bold; font-size: 14px;");
+    console.log("%c[BMKG-Receiptor] Mode: All-Level Coverage", "color: lime; font-weight: bold; font-size: 14px;");
 
     // --- 1. ENGINE: DEEP NUXT DECODER ---
     function resolve(source, index) {
@@ -41,63 +41,48 @@
         return clean;
     }
 
-    // --- 3. URL BASED NAMING LOGIC (INTI PERUBAHAN) ---
+    // --- 3. URL BASED NAMING (Sesuai Request Sebelumnya) ---
     function generateFileNameFromURL(data) {
-        // Ambil kode wilayah dari URL terakhir (misal: 35.07.09.2005)
         const pathSegments = window.location.pathname.replace(/\/$/, '').split('/');
         const regionCode = pathSegments[pathSegments.length - 1]; 
-        
-        // Hitung jumlah segmen kode berdasarkan pemisah titik (.)
-        // Contoh: "35.07.09.2005" -> split('.') -> length 4
         const codeLevel = regionCode.includes('.') ? regionCode.split('.').length : 1;
-
         const dateStr = new Date().toISOString().split('T')[0];
-        
-        // Ambil sampel administrasi dari data pertama untuk mendapatkan Nama Wilayah
         const adm = data[0]?.administrasi || {};
+        
         let prefix = "BMKG";
         let regionName = "Data";
 
-        // LOGIKA HIERARKI SESUAI REQUEST
         switch (codeLevel) {
-            case 4: // Format: 35.07.09.2005 (Desa)
+            case 4: // Desa
                 prefix = "Hourly_Desa";
-                // Ambil nama desa dan kecamatan
                 regionName = `${adm.desa || 'Desa'}_${adm.kecamatan || ''}`;
                 break;
-
-            case 3: // Format: 35.07.09 (Kecamatan)
+            case 3: // Kecamatan
                 prefix = "Daily_Kecamatan";
                 regionName = `${adm.kecamatan || 'Kecamatan'}_${adm.kotkab || ''}`;
                 break;
-
-            case 2: // Format: 35.07 (Kota/Kab)
+            case 2: // Kabupaten/Kota
                 prefix = "Daily_Kabupaten";
                 regionName = `${adm.kotkab || 'Kabupaten'}`;
                 break;
-
-            case 1: // Format: 35 (Provinsi)
+            case 1: // Provinsi
                 prefix = "Daily_Provinsi";
                 regionName = `${adm.provinsi || 'Provinsi'}`;
                 break;
-            
             default:
-                // Fallback jika URL tidak standar
-                prefix = "BMKG_Data";
                 regionName = regionCode;
         }
 
-        // Bersihkan nama file
         const safeRegion = regionName.trim()
-            .replace("Kota ", "") // Hapus prefix standar
+            .replace("Kota ", "") 
             .replace("Kab. ", "")
-            .replace(/[^a-zA-Z0-9_]/g, "_") // Ganti karakter aneh dengan _
-            .replace(/_+/g, "_"); // Hapus _ ganda
+            .replace(/[^a-zA-Z0-9_]/g, "_") 
+            .replace(/_+/g, "_"); 
 
         return `BMKG_${prefix}_${safeRegion}_${dateStr}.json`;
     }
 
-    // --- 4. MAIN EXECUTOR ---
+    // --- 4. MAIN EXECUTOR (UPDATED WILAYAH LOGIC) ---
     function executeExtraction() {
         const scriptTag = document.getElementById('__NUXT_DATA__');
         if (!scriptTag) return false;
@@ -106,8 +91,7 @@
             const rawData = JSON.parse(scriptTag.textContent);
             let finalResult = null;
 
-            // STRATEGI EKSTRAKSI UNIVERSAL
-            // Cari array yang berisi object dengan 'lokasi' dan 'cuaca'
+            // STRATEGI PENCARIAN DATA
             const targetList = rawData.find(item => 
                 Array.isArray(item) && item.length > 0 && typeof item[0] === 'number' && 
                 rawData[item[0]] && typeof rawData[item[0]] === 'object' &&
@@ -117,11 +101,8 @@
             let decodedList = [];
             
             if (targetList) {
-                // Kasus Multi (Kecamatan/Kota/Provinsi)
                 decodedList = unflatten(rawData, rawData.indexOf(targetList));
             } else {
-                // Kasus Single (Desa - Detail)
-                // Cari object tunggal yang punya 'lokasi' dan 'cuaca' (biasanya ada di root array)
                 const singleObjIndex = rawData.findIndex(item => 
                     item && typeof item === 'object' && !Array.isArray(item) &&
                     'lokasi' in item && 'cuaca' in item
@@ -132,21 +113,25 @@
             }
 
             if (decodedList.length > 0) {
-                // Format ulang data agar konsisten
+                // PERBAIKAN DI SINI: Menambahkan prioritas 'kotkab' dan 'provinsi'
                 finalResult = decodedList.map(area => ({
-                    wilayah: area.lokasi?.desa || area.lokasi?.nama || area.lokasi?.kecamatan || 'Unknown',
+                    wilayah: area.lokasi?.desa || 
+                             area.lokasi?.kecamatan || 
+                             area.lokasi?.kotkab ||  // <-- Tambahan Penting untuk Level Provinsi
+                             area.lokasi?.provinsi || 
+                             area.lokasi?.nama || 
+                             'Unknown',
                     administrasi: area.lokasi,
                     prakiraan: Array.isArray(area.cuaca) ? area.cuaca.map(cleanWeatherData) : []
                 }));
 
-                // Generate Nama File Berbasis URL
                 const fileName = generateFileNameFromURL(finalResult);
 
                 console.clear();
-                console.group(`%c[BMKG-Receiptor] SUKSES ✅`, "background: #004400; color: #00ff00; padding: 4px; font-size: 16px;");
-                console.log("🔗 URL Context:", window.location.pathname);
-                console.log("📄 Target Filename:", fileName);
-                console.table(finalResult[0].prakiraan.slice(0, 5));
+                console.group(`%c[BMKG-Receiptor] 🟢 DATA CAPTURED`, "background: #004400; color: #00ff00; padding: 4px; font-size: 16px;");
+                console.log("📄 Filename:", fileName);
+                console.log("📍 Wilayah Sample:", finalResult[0]?.wilayah);
+                console.table(finalResult[0].prakiraan.slice(0, 3));
                 console.groupEnd();
 
                 // DOWNLOAD
