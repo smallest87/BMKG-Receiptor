@@ -1,35 +1,31 @@
-// Listener saat Ekstensi diinstall atau direload
+// background.js
+
+// 1. Setup saat Instalasi/Update
 chrome.runtime.onInstalled.addListener(() => {
-    console.log("BMKG-Receiptor Service Worker: READY.");
+    // Buat Context Menu
+    chrome.contextMenus.create({
+        id: "force-scrape",
+        title: "⚡ Force Scrape Weather Data",
+        contexts: ["all"]
+    });
 });
 
-// Listener untuk memantau Header Request sebelum dikirim
-chrome.webRequest.onBeforeSendHeaders.addListener(
-    (details) => {
-        // Filter hanya request yang mengarah ke API/Data (bukan gambar/css)
-        if (details.type === "xmlhttprequest" || details.type === "fetch") {
-            console.group(`%c[HEADER-OUT] ${details.method}: ${details.url}`, "color: #00ff00");
-            
-            details.requestHeaders.forEach(header => {
-                console.log(`${header.name}: ${header.value}`);
-            });
-            
-            console.groupEnd();
-        }
-    },
-    { urls: ["*://*.bmkg.go.id/*"] },
-    ["requestHeaders"]
-);
-
-// Listener untuk memantau Status Code Response
-chrome.webRequest.onCompleted.addListener(
-    (details) => {
-        if (details.type === "xmlhttprequest" || details.type === "fetch") {
-             // Log error jika status bukan 200 OK
-            if (details.statusCode >= 400) {
-                console.warn(`[ERROR ${details.statusCode}] ${details.url}`);
+// 2. Handle Klik Menu
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === "force-scrape") {
+        // Kita eksekusi script langsung ke "MAIN" world di tab target
+        // Ini akan memanggil fungsi global yang kita expose di interceptor.js
+        chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: "MAIN",
+            func: () => {
+                if (typeof window.forceBmkgScrape === 'function') {
+                    console.log("[Background] Triggering manual scrape...");
+                    window.forceBmkgScrape(true); // true = manual mode
+                } else {
+                    alert("BMKG-Receiptor belum siap atau tidak aktif di halaman ini.");
+                }
             }
-        }
-    },
-    { urls: ["*://*.bmkg.go.id/*"] }
-);
+        });
+    }
+});

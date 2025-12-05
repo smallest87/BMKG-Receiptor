@@ -1,5 +1,5 @@
 (function() {
-    console.log("%c[BMKG-Receiptor] Mode: All-Level Coverage", "color: lime; font-weight: bold; font-size: 14px;");
+    console.log("%c[BMKG-Receiptor] Mode: All-Level Coverage + Manual Trigger", "color: lime; font-weight: bold; font-size: 14px;");
 
     // --- 1. ENGINE: DEEP NUXT DECODER ---
     function resolve(source, index) {
@@ -41,7 +41,7 @@
         return clean;
     }
 
-    // --- 3. URL BASED NAMING (Sesuai Request Sebelumnya) ---
+    // --- 3. URL BASED NAMING ---
     function generateFileNameFromURL(data) {
         const pathSegments = window.location.pathname.replace(/\/$/, '').split('/');
         const regionCode = pathSegments[pathSegments.length - 1]; 
@@ -82,16 +82,19 @@
         return `BMKG_${prefix}_${safeRegion}_${dateStr}.json`;
     }
 
-    // --- 4. MAIN EXECUTOR (UPDATED WILAYAH LOGIC) ---
-    function executeExtraction() {
+    // --- 4. MAIN EXECUTOR ---
+    // Parameter 'isManual' ditambahkan untuk logic logging/alert
+    function executeExtraction(isManual = false) {
         const scriptTag = document.getElementById('__NUXT_DATA__');
-        if (!scriptTag) return false;
+        if (!scriptTag) {
+            if (isManual) alert("❌ Elemen __NUXT_DATA__ tidak ditemukan!");
+            return false;
+        }
 
         try {
             const rawData = JSON.parse(scriptTag.textContent);
             let finalResult = null;
 
-            // STRATEGI PENCARIAN DATA
             const targetList = rawData.find(item => 
                 Array.isArray(item) && item.length > 0 && typeof item[0] === 'number' && 
                 rawData[item[0]] && typeof rawData[item[0]] === 'object' &&
@@ -113,11 +116,10 @@
             }
 
             if (decodedList.length > 0) {
-                // PERBAIKAN DI SINI: Menambahkan prioritas 'kotkab' dan 'provinsi'
                 finalResult = decodedList.map(area => ({
                     wilayah: area.lokasi?.desa || 
                              area.lokasi?.kecamatan || 
-                             area.lokasi?.kotkab ||  // <-- Tambahan Penting untuk Level Provinsi
+                             area.lokasi?.kotkab || 
                              area.lokasi?.provinsi || 
                              area.lokasi?.nama || 
                              'Unknown',
@@ -128,13 +130,12 @@
                 const fileName = generateFileNameFromURL(finalResult);
 
                 console.clear();
-                console.group(`%c[BMKG-Receiptor] 🟢 DATA CAPTURED`, "background: #004400; color: #00ff00; padding: 4px; font-size: 16px;");
+                console.group(`%c[BMKG-Receiptor] 🟢 DATA CAPTURED ${isManual ? '(MANUAL)' : '(AUTO)'}`, "background: #004400; color: #00ff00; padding: 4px; font-size: 16px;");
                 console.log("📄 Filename:", fileName);
-                console.log("📍 Wilayah Sample:", finalResult[0]?.wilayah);
                 console.table(finalResult[0].prakiraan.slice(0, 3));
                 console.groupEnd();
 
-                // DOWNLOAD
+                // DOWNLOAD logic
                 const jsonString = JSON.stringify(finalResult, null, 2);
                 const blob = new Blob([jsonString], {type: "application/json"});
                 const url = URL.createObjectURL(blob);
@@ -146,19 +147,26 @@
                 document.body.removeChild(a);
                 
                 return true;
+            } else {
+                if (isManual) alert("❌ Struktur data cuaca tidak dikenali di halaman ini.");
             }
 
         } catch (e) {
             console.error("[BMKG-Receiptor] Error:", e);
+            if (isManual) alert("❌ Terjadi error saat parsing data: " + e.message);
         }
         return false;
     }
 
-    // POLLING
+    // --- 5. EXPOSE TO WINDOW (Agar bisa dipanggil Background.js) ---
+    window.forceBmkgScrape = executeExtraction;
+
+    // --- 6. AUTO POLLING (Tetap berjalan) ---
     let attempts = 0;
     const poller = setInterval(() => {
         attempts++;
-        if (executeExtraction() || attempts > 20) {
+        // Auto run tidak menampilkan alert error (isManual = false)
+        if (executeExtraction(false) || attempts > 20) {
             clearInterval(poller);
         }
     }, 600);

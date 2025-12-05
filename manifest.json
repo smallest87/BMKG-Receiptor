@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "BMKG-Receiptor",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Network traffic monitor for BMKG Reverse Engineering.",
   "permissions": [
-    "webRequest" 
+    "contextMenus",
+    "scripting"
   ],
   "host_permissions": [
     "*://*.bmkg.go.id/*"
