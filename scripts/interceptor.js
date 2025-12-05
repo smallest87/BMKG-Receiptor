@@ -1,73 +1,64 @@
 (function() {
-    console.log("%c[BMKG-Receiptor] Target: Desa Gedogkulon Locked.", "color: lime; font-weight: bold; font-size: 14px;");
+    console.log("%c[BMKG-Receiptor] Status: Hunting Nuxt State...", "color: lime; font-weight: bold; font-size: 14px;");
 
-    // Helper untuk membaca XML string
-    function parseXML(xmlString) {
-        try {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-            return xmlDoc;
-        } catch (e) {
-            return null;
+    // Fungsi pencari data pintar (tidak peduli nama key acak)
+    function findWeatherData(nuxtData) {
+        if (!nuxtData) return null;
+
+        // Loop semua key yang ada di dalam object 'data' (contoh: '2WYhP1zvSU', dll)
+        for (const key in nuxtData) {
+            const item = nuxtData[key];
+
+            // Pengecekan Ciri-Ciri (Duck Typing):
+            // Apakah item ini punya properti 'data'?
+            // Dan di dalamnya ada 'cuaca' dan 'lokasi'?
+            if (item && item.data && item.data.cuaca && item.data.lokasi) {
+                console.log(`%c[FOUND] Weather data found in key: ${key}`, "color: yellow");
+                return item.data; // Kembalikan object data bersihnya
+            }
         }
+        return null;
     }
 
-    // 1. Intercept Fetch
-    const originalFetch = window.fetch;
-    window.fetch = async function(...args) {
-        const [resource, config] = args;
-        const response = await originalFetch(resource, config);
-        
-        const clone = response.clone();
-        clone.text().then(body => {
-            // Cek apakah JSON
-            try {
-                const data = JSON.parse(body);
-                console.groupCollapsed(`%c[FETCH-JSON] ${resource}`, "color: cyan");
-                console.log(data);
-                console.groupEnd();
-                return;
-            } catch (e) {}
-
-            // Cek apakah XML (Data BMKG seringkali XML)
-            if (body.includes("<?xml") || body.includes("<data source=")) {
-                console.groupCollapsed(`%c[FETCH-XML] ${resource}`, "color: magenta");
-                console.log("Raw String:", body.substring(0, 200) + "..."); // Print dikit aja
-                console.log("Parsed XML:", parseXML(body));
-                console.groupEnd();
-            }
-        });
-        return response;
-    };
-
-    // 2. Intercept XHR (Paling mungkin dipakai di halaman ini)
-    const XHR = XMLHttpRequest.prototype;
-    const send = XHR.send;
-    
-    XHR.send = function(postData) {
-        this.addEventListener('load', function() {
-            const url = this.responseURL || this._url;
+    function extractNuxtData() {
+        // Cek keberadaan variabel global
+        if (window.__NUXT__ && window.__NUXT__.data) {
             
-            // Filter URL sampah (Google Analytics, tracking, font, gambar)
-            if (!url || url.includes('google') || url.includes('.png') || url.includes('.woff')) return;
+            const weatherData = findWeatherData(window.__NUXT__.data);
 
-            console.groupCollapsed(`%c[XHR] ${url}`, "color: orange");
-            
-            // Coba Parse JSON
-            try {
-                const json = JSON.parse(this.responseText);
-                console.log("JSON Data:", json);
-            } catch (e) {
-                // Jika bukan JSON, coba XML
-                if (this.responseText.includes("<data") || this.responseText.includes("<?xml")) {
-                    console.log("XML Data Detected!");
-                    console.log(parseXML(this.responseText));
-                } else {
-                    console.log("Response (Text):", this.responseText.substring(0, 100) + "...");
-                }
+            if (weatherData) {
+                console.group("%c[BMKG-Receiptor] WEATHER DATA CAPTURED", "background: green; color: white; padding: 5px; font-size: 16px;");
+                
+                console.log("📍 Lokasi:", weatherData.lokasi);
+                console.log("🌤️ Cuaca Saat Ini:", weatherData.cuaca);
+                console.log("📅 Data Lengkap:", weatherData);
+                
+                // --- DISINI ANDA BISA MENYIMPAN DATA ---
+                // Contoh: Kirim ke server Anda sendiri atau simpan ke LocalStorage
+                // sendToMyServer(weatherData); 
+                
+                console.groupEnd();
+                return true; 
             }
-            console.groupEnd();
-        });
-        return send.apply(this, arguments);
-    };
+        }
+        return false;
+    }
+
+    // Strategi Eksekusi:
+    // Coba berulang kali karena Nuxt butuh waktu milidetik untuk mengisi variabel window.__NUXT__
+    const maxRetries = 10;
+    let attempts = 0;
+
+    const interval = setInterval(() => {
+        attempts++;
+        const success = extractNuxtData();
+
+        if (success) {
+            clearInterval(interval); // Berhenti jika data ketemu
+        } else if (attempts >= maxRetries) {
+            console.warn("[BMKG-Receiptor] Gagal menemukan object cuaca setelah 10x percobaan.");
+            clearInterval(interval);
+        }
+    }, 500); // Cek setiap 500ms
+
 })();
